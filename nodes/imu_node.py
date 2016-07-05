@@ -220,64 +220,105 @@ rospy.loginfo("Publishing IMU data...")
 
 while not rospy.is_shutdown():
     line = ser.readline()
+    rospy.loginfo("line before #YPRAG rem: {}".format(line))
     line = line.replace("#YPRAG=","")   # Delete "#YPRAG="
-    #f.write(line)                     # Write to the output log file
+    rospy.loginfo("line after #YPRAG rem: {}".format(line))
     words = string.split(line,",")    # Fields split
+    words = [w.replace("\r", "").replace("\n", "").replace("\x00", "") for w in words]
+    words = [w.replace(".", "") if w.endsWith(".") else w for w in words]
+    rospy.loginfo("words: {}".format(words))
     if len(words) > 2:
-        #in AHRS firmware z axis points down, in ROS z axis points up (see REP 103)
-        yaw_deg = -float(words[0])
-        yaw_deg = yaw_deg + imu_yaw_calibration
-        if yaw_deg > 180.0:
-            yaw_deg = yaw_deg - 360.0
-        if yaw_deg < -180.0:
-            yaw_deg = yaw_deg + 360.0
-        yaw = yaw_deg*degrees2rad
-        #in AHRS firmware y axis points right, in ROS y axis points left (see REP 103)
-        pitch = -float(words[1])*degrees2rad
-        roll = float(words[2])*degrees2rad
+        try:
+            #in AHRS firmware z axis points down, in ROS z axis points up (see REP 103)
+            try:
+                yaw_deg = -float(words[0])
+            except ValueError:
+                yaw_deg = -float(int(words[0]))
 
-        # Publish message
-        # AHRS firmware accelerations are negated
-        # This means y and z are correct for ROS, but x needs reversing
-        imuMsg.linear_acceleration.x = -float(words[3]) * accel_factor
-        imuMsg.linear_acceleration.y = float(words[4]) * accel_factor
-        imuMsg.linear_acceleration.z = float(words[5]) * accel_factor
+            yaw_deg = yaw_deg + imu_yaw_calibration
 
-        imuMsg.angular_velocity.x = float(words[6])
-        #in AHRS firmware y axis points right, in ROS y axis points left (see REP 103)
-        imuMsg.angular_velocity.y = -float(words[7])
-        #in AHRS firmware z axis points down, in ROS z axis points up (see REP 103) 
-        imuMsg.angular_velocity.z = -float(words[8])
+            if yaw_deg > 180.0:
+                yaw_deg = yaw_deg - 360.0
+            if yaw_deg < -180.0:
+                yaw_deg = yaw_deg + 360.0
+            yaw = yaw_deg*degrees2rad
+            #in AHRS firmware y axis points right, in ROS y axis points left (see REP 103)
+            try:
+                pitch = -float(words[1])*degrees2rad
+            except ValueError:
+                pitch = -float(int(words[1]))*degrees
 
-    q = quaternion_from_euler(roll,pitch,yaw)
-    imuMsg.orientation.x = q[0]
-    imuMsg.orientation.y = q[1]
-    imuMsg.orientation.z = q[2]
-    imuMsg.orientation.w = q[3]
-    imuMsg.header.stamp= rospy.Time.now()
-    imuMsg.header.frame_id = 'base_imu_link'
-    imuMsg.header.seq = seq
-    seq = seq + 1
-    pub.publish(imuMsg)
+            try:
+                roll = float(words[2])*degrees2rad
+            except ValueError:
+                roll = float(int(words[2]))*degrees2rad
 
-    if (diag_pub_time < rospy.get_time()) :
-        diag_pub_time += 1
-        diag_arr = DiagnosticArray()
-        diag_arr.header.stamp = rospy.get_rostime()
-        diag_arr.header.frame_id = '1'
-        diag_msg = DiagnosticStatus()
-        diag_msg.name = 'Razor_Imu'
-        diag_msg.level = DiagnosticStatus.OK
-        diag_msg.message = 'Received AHRS measurement'
-        diag_msg.values.append(KeyValue('roll (deg)',
-                                str(roll*(180.0/math.pi))))
-        diag_msg.values.append(KeyValue('pitch (deg)',
-                                str(pitch*(180.0/math.pi))))
-        diag_msg.values.append(KeyValue('yaw (deg)',
-                                str(yaw*(180.0/math.pi))))
-        diag_msg.values.append(KeyValue('sequence number', str(seq)))
-        diag_arr.status.append(diag_msg)
-        diag_pub.publish(diag_arr)
-        
+            # Publish message
+            # AHRS firmware accelerations are negated
+            # This means y and z are correct for ROS, but x needs reversing
+            try:
+                imuMsg.linear_acceleration.x = -float(words[3]) * accel_factor
+            except ValueError:
+                imuMsg.linear_acceleration.x = -float(int(words[3])) * accel_factor
+
+            try:
+                imuMsg.linear_acceleration.y = float(words[4]) * accel_factor
+            except ValueError:
+                imuMsg.linear_acceleration.y = float(int(words[4])) * accel_factor
+
+            try:
+                imuMsg.linear_acceleration.z = float(words[5]) * accel_factor
+            except ValueError:
+                imuMsg.linear_acceleration.z = float(int(words[5])) * accel_factor
+
+
+            try:
+                imuMsg.angular_velocity.x = float(words[6])
+            except ValueError:
+                imuMsg.angular_velocity.x = float(int(words[6]))
+
+            #in AHRS firmware y axis points right, in ROS y axis points left (see REP 103)
+            try:
+                imuMsg.angular_velocity.y = -float(words[7])
+            except ValueError:
+                imuMsg.angular_velocity.y = -float(int(words[7]))
+
+            #in AHRS firmware z axis points down, in ROS z axis points up (see REP 103)
+            try:
+                imuMsg.angular_velocity.z = -float(words[8])
+            except ValueError:
+                imuMsg.angular_velocity.z = -float(int(words[8]))
+
+            q = quaternion_from_euler(roll,pitch,yaw)
+            imuMsg.orientation.x = q[0]
+            imuMsg.orientation.y = q[1]
+            imuMsg.orientation.z = q[2]
+            imuMsg.orientation.w = q[3]
+            imuMsg.header.stamp= rospy.Time.now()
+            imuMsg.header.frame_id = 'base_imu_link'
+            imuMsg.header.seq = seq
+            seq = seq + 1
+            pub.publish(imuMsg)
+
+            if (diag_pub_time < rospy.get_time()) :
+                diag_pub_time += 1
+                diag_arr = DiagnosticArray()
+                diag_arr.header.stamp = rospy.get_rostime()
+                diag_arr.header.frame_id = '1'
+                diag_msg = DiagnosticStatus()
+                diag_msg.name = 'Razor_Imu'
+                diag_msg.level = DiagnosticStatus.OK
+                diag_msg.message = 'Received AHRS measurement'
+                diag_msg.values.append(KeyValue('roll (deg)',
+                                                str(roll*(180.0/math.pi))))
+                diag_msg.values.append(KeyValue('pitch (deg)',
+                                                str(pitch*(180.0/math.pi))))
+                diag_msg.values.append(KeyValue('yaw (deg)',
+                                                str(yaw*(180.0/math.pi))))
+                diag_msg.values.append(KeyValue('sequence number', str(seq)))
+                diag_arr.status.append(diag_msg)
+                diag_pub.publish(diag_arr)
+        except:
+            rospy.logerr("There was an error processing imu: {}".format(words))
 ser.close
 #f.close
